@@ -415,6 +415,17 @@ Exec=qterminal, -e, htop
 EOF
 fi
 
+# Win+V -> CopyQ (Zobrazení historie)
+if ! grep -q "copyq show" "$SHORTCUTS_CONF" 2>/dev/null; then
+    cat >> "$SHORTCUTS_CONF" << 'EOF'
+
+[Meta%2BV.99]
+Comment=CopyQ show
+Enabled=true
+Exec=copyq, show
+EOF
+fi
+
 echo "   [OK] Zkratky úspěšně přidány."
 
 # --- INTEGRACE VLASTNÍHO OVLÁDÁNÍ JASU ---
