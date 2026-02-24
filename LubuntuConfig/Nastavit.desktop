@@ -3,7 +3,7 @@ Version=1.0
 Type=Application
 Name=Spustit Nastavení Lubuntu
 Comment=Ultimátní V7 instalační skript
-Exec=bash -c 'SKRIPT=$(find "$(dirname "$1")" -name "nastavit-lubuntu.sh" | head -n 1); cd "$(dirname "$SKRIPT")"; bash nastavit-lubuntu.sh; echo "----------------"; echo "HOTOVO - Zmackni Enter"; read' -- "%k"
+Exec=bash -c 'SKRIPT=$(find "$(dirname "$1")" -name "lubuntu-setup.sh" | head -n 1); cd "$(dirname "$SKRIPT")"; bash lubuntu-setup.sh; echo "----------------"; echo "HOTOVO - Zmackni Enter"; read' -- "%k"
 Icon=preferences-system
 Terminal=true
 Categories=System;
