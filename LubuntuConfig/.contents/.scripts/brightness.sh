@@ -2,9 +2,9 @@
 
 # Nastavení jasu podle parametru (up/down)
 if [ "$1" == "-i" ]; then
-    brightnessctl set +10%
+    brightnessctl set +5%
 elif [ "$1" == "-d" ]; then
-    brightnessctl set 10%-
+    brightnessctl set 5%-
 fi
 
 # Vytažení aktuální procentuální hodnoty
