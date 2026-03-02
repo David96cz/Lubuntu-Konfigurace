@@ -22,7 +22,7 @@ sudo apt install libreoffice libreoffice-l10n-cs libreoffice-help-cs -y
 
 OnlyOffice
 
-wget https://download.onlyoffice.com
+wget https://github.com/ONLYOFFICE/DesktopEditors/releases/latest/download/onlyoffice-desktopeditors_amd64.deb
 sudo apt install ./onlyoffice-desktopeditors_amd64.deb
 
 

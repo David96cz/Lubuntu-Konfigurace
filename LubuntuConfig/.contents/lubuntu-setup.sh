@@ -106,7 +106,7 @@ echo "   [OK] Skripty rozdistribuovány."
 echo ">> Skrývám aplikace z menu..."
 if [ ! -d "$USER_APPS_DIR" ]; then mkdir -p "$USER_APPS_DIR"; fi
 
-APPS_TO_HIDE=("lxqt-about.desktop" "qterminal-drop.desktop" "lxqt-lockscreen.desktop" "lxqt-leave.desktop" "about-lxqt.desktop")
+APPS_TO_HIDE=("lxqt-about.desktop" "qterminal-drop.desktop" "lxqt-lockscreen.desktop" "lxqt-leave.desktop")
 
 for app in "${APPS_TO_HIDE[@]}"; do
     if [ -f "/usr/share/applications/$app" ]; then
@@ -218,7 +218,7 @@ gsettings set org.gtk.Settings.FileChooser show-hidden false 2>/dev/null
 echo "   [OK] Různá nastavení prostředí dokončena."
 
 # ---------------------------------------------------------
-# 7. XFWM4 A PRAVIDLA PRO TOUCHPAD
+# 7. XFWM4 
 # ---------------------------------------------------------
 echo ">> Nastavuji XFWM4..."
 SESSION_CONF="$LXQT_DIR/session.conf"
@@ -237,8 +237,13 @@ if command -v xfconf-query &> /dev/null; then
     xfconf-query -c xfwm4 -p /general/wrap_windows -n -t bool -s false
 fi
 
-echo ">> Nastavuji pravidla pro touchpad..."
+# ---------------------------------------------------------
+# 8. PRAVIDLA PRO TOUCHPAD
+# ---------------------------------------------------------
+
+echo ">> 1. Nastavuji globální pravidla touchpadu (X11)..."
 sudo mkdir -p /etc/X11/xorg.conf.d
+# Vynucení clickfinger (zákaz rohů) pro všechny touchpady
 sudo tee /etc/X11/xorg.conf.d/40-libinput-touchpad.conf > /dev/null << 'EOF'
 Section "InputClass"
     Identifier "libinput touchpad catchall"
@@ -249,8 +254,38 @@ Section "InputClass"
 EndSection
 EOF
 
+echo ">> 2. Detekuji touchpad a zapisuji výchozí hodnoty pro LXQt GUI..."
+# Získání názvu touchpadu
+TOUCHPAD_NAME=$(xinput list --name-only | grep -i "touchpad" | head -n 1)
+
+if [ -n "$TOUCHPAD_NAME" ]; then
+    echo "Nalezen touchpad pro GUI: $TOUCHPAD_NAME"
+    
+    # LXQt (QSettings) kóduje mezery jako %2520 a lomítka jako %252F
+    FORMATTED_NAME=$(echo "$TOUCHPAD_NAME" | sed 's/\//%252F/g; s/ /%2520/g')
+    
+    LXQT_CONF="$HOME/.config/lxqt/session.conf"
+    mkdir -p "$(dirname "$LXQT_CONF")"
+    touch "$LXQT_CONF"
+
+    # Pokud sekce [Touchpad] neexistuje, přidáme ji
+    if ! grep -q "^\[Touchpad\]" "$LXQT_CONF"; then
+        echo "" >> "$LXQT_CONF"
+        echo "[Touchpad]" >> "$LXQT_CONF"
+    fi
+
+    # Zápis předvyplněných hodnot do session.conf (dvojité zpětné lomítko je kvůli bash echo escape)
+    # Tyto hodnoty si načte GUI a uživatel je může dál měnit
+    echo "${FORMATTED_NAME}\\naturalScrollingEnabled=1" >> "$LXQT_CONF"
+    echo "${FORMATTED_NAME}\\tappingEnabled=1" >> "$LXQT_CONF"
+    
+    echo "Výchozí GUI hodnoty byly zapsány do $LXQT_CONF"
+else
+    echo "Varování: Žádný touchpad nebyl detekován, přeskočeno nastavení GUI."
+fi
+
 # ---------------------------------------------------------
-# 8. TISK, CHROME A AUTOSTART APLIKACÍ
+# 9. TISK V MENU, CHROME A AUTOSTART APLIKACÍ
 # ---------------------------------------------------------
 echo ">> Aplikuji systémová zástupce a autostart..."
 
@@ -310,7 +345,7 @@ EOF
 update-desktop-database "$USER_APPS_DIR" 2>/dev/null
 
 # ---------------------------------------------------------
-# 9. ČIŠTĚNÍ BORDELU
+# 10. ČIŠTĚNÍ BORDELU
 # ---------------------------------------------------------
 echo ">> Čistím systém od zbytečných aplikací..."
 for balicek in $SMRTIHLAV; do
@@ -319,6 +354,72 @@ done
 sudo apt autoremove --purge -y
 sudo apt clean
 echo "   [OK] Systém je vyčištěn od všeho balastu."
+
+# ---------------------------------------------------------
+# 11. AUTOLOGIN
+# ---------------------------------------------------------
+
+read -p "Chceš zajistit automatické přihlašování bez hesla? (A/n): " AUTOLOGIN_CHOICE
+
+# Pokud uživatel zmáčkne Enter (prázdná volba), 'A' nebo 'a', provede se nastavení
+if [[ -z "$AUTOLOGIN_CHOICE" || "$AUTOLOGIN_CHOICE" =~ ^[Aa]$ ]]; then
+    echo ">> Nastavuji autologin pro uživatele $USER..."
+
+    # Smazání případného duplicitního hlavního souboru (-f zajistí, že to nevyhodí chybu, pokud soubor neexistuje)
+    sudo rm -f /etc/sddm.conf
+
+    # Vytvoření složky, pokud by náhodou chyběla
+    sudo mkdir -p /etc/sddm.conf.d
+
+    # Zápis do správného konfiguračního souboru
+    sudo tee /etc/sddm.conf.d/autologin.conf > /dev/null <<EOF
+[Autologin]
+User=$USER
+Session=Lubuntu
+Relogin=true
+EOF
+
+    echo ">> Autologin úspěšně nastaven."
+else
+    echo ">> Přeskakuji, musíš se vždycky přihlásit heslem při startu PC nebo při odhlášení..."
+fi
+
+# ---------------------------------------------------------
+# 12. ODSTRANĚNÍ "O LXQT" Z FANCY MENU (Binární patch)
+# ---------------------------------------------------------
+echo ">> Kontrola verze systému pro aplikaci Fancy Menu patche..."
+
+OS_CODENAME=$(lsb_release -cs)
+
+# Podmínka pro Lubuntu 25.10 (questing) a novější (plucky, atd.)
+if [[ "$OS_CODENAME" == "questing" || "$OS_CODENAME" == "plucky" ]]; then
+    
+    # Cesta k tvému pokladu (relativně k místu, kde běží skript)
+    PATCHED_PANEL="./.config/lxqt-panel_amd64_no_about"
+
+    if [ -f "$PATCHED_PANEL" ]; then
+        echo ">> Detekováno Lubuntu 25.10+, nasazuji upravený lxqt-panel..."
+
+        # 1. Záloha originálu (vždycky dělej zálohy, kdyby se něco podělalo)
+        sudo cp /usr/bin/lxqt-panel /usr/bin/lxqt-panel.bak
+
+        # 2. Přepsání tvým zkompilovaným souborem
+        sudo cp "$PATCHED_PANEL" /usr/bin/lxqt-panel
+
+        # 3. Nastavení správných práv (spustitelný soubor)
+        sudo chmod +x /usr/bin/lxqt-panel
+
+        # 4. Restart panelu (živý swap)
+        # 2>/dev/null tam je proto, aby to neházelo chybu, když panel zrovna neběží
+        killall lxqt-panel 2>/dev/null && (lxqt-panel &)
+        
+        echo ">> Patch úspěšně aplikován. Pták je v pánu."
+    else
+        echo "!! VAROVÁNÍ: Soubor $PATCHED_PANEL nebyl nalezen! Přeskakuji..."
+    fi
+else
+    echo ">> Starší verze systému ($OS_CODENAME), binární patch pro 25.10 vynechán."
+fi
 
 # ---------------------------------------------------------
 # FINÁLE
