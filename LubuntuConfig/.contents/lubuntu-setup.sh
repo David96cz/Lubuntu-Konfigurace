@@ -65,10 +65,20 @@ echo ">> Nasazuji čisté konfigurační soubory z .config..."
 pkill lxqt-notificationd 2>/dev/null
 cp "$CONFIG_DIR/notifications.conf" "$LXQT_DIR/notifications.conf"
 
-pkill -KILL pcmanfm-qt 2>/dev/null
+# 1. Vypneme modul plochy (aby si neuložil staré nastavení při ukončování)
+pcmanfm-qt --desktop-off 2>/dev/null
+pkill -9 pcmanfm-qt 2>/dev/null
+
+# 2. Vyměníme konfiguraci
 rm -rf "$PCMANFM_DIR"
 mkdir -p "$PCMANFM_DIR"
 cp "$CONFIG_DIR/pcmanfm-qt.conf" "$PCMANFM_DIR/settings.conf"
+
+# 3. Znovu nahodíme plochu (načte si nové settings.conf)
+# Použijeme 'disown', aby proces běžel nezávisle na tvém skriptu/terminálu
+(pcmanfm-qt --desktop --show-desktop & disown) 2>/dev/null
+
+echo ">> Plocha byla překonfigurována a restartována."
 
 OS_VER=$(lsb_release -rs)
 if [[ "$OS_VER" == 24.* ]]; then
@@ -387,38 +397,24 @@ fi
 # ---------------------------------------------------------
 # 12. ODSTRANĚNÍ "O LXQT" Z FANCY MENU (Binární patch)
 # ---------------------------------------------------------
-echo ">> Kontrola verze systému pro aplikaci Fancy Menu patche..."
+echo ">> Nasazuji upravený lxqt-panel..."
 
-OS_CODENAME=$(lsb_release -cs)
+# 1. Nejdříve panel nemilosrdně ukončíme, aby se uvolnil soubor v /usr/bin
+# Použijeme -9 (SIGKILL), aby zmizel okamžitě
+sudo killall -9 lxqt-panel 2>/dev/null
 
-# Podmínka pro Lubuntu 25.10 (questing) a novější (plucky, atd.)
-if [[ "$OS_CODENAME" == "questing" || "$OS_CODENAME" == "plucky" ]]; then
+# 2. Záloha a přepsání
+if [ -f "./.config/lxqt-panel_amd64_no_about" ]; then
+    sudo cp /usr/bin/lxqt-panel /usr/bin/lxqt-panel.bak
+    sudo cp "./.config/lxqt-panel_amd64_no_about" /usr/bin/lxqt-panel
+    sudo chmod +x /usr/bin/lxqt-panel
+    echo ">> Panel byl nahrazen."
     
-    # Cesta k tvému pokladu (relativně k místu, kde běží skript)
-    PATCHED_PANEL="./.config/lxqt-panel_amd64_no_about"
-
-    if [ -f "$PATCHED_PANEL" ]; then
-        echo ">> Detekováno Lubuntu 25.10+, nasazuji upravený lxqt-panel..."
-
-        # 1. Záloha originálu (vždycky dělej zálohy, kdyby se něco podělalo)
-        sudo cp /usr/bin/lxqt-panel /usr/bin/lxqt-panel.bak
-
-        # 2. Přepsání tvým zkompilovaným souborem
-        sudo cp "$PATCHED_PANEL" /usr/bin/lxqt-panel
-
-        # 3. Nastavení správných práv (spustitelný soubor)
-        sudo chmod +x /usr/bin/lxqt-panel
-
-        # 4. Restart panelu (živý swap)
-        # 2>/dev/null tam je proto, aby to neházelo chybu, když panel zrovna neběží
-        killall lxqt-panel 2>/dev/null && (lxqt-panel &)
-        
-        echo ">> Patch úspěšně aplikován. Pták je v pánu."
-    else
-        echo "!! VAROVÁNÍ: Soubor $PATCHED_PANEL nebyl nalezen! Přeskakuji..."
-    fi
+    # Pokud ho nechceš spouštět, aby se ti nesekl terminál, 
+    # prostě tenhle řádek vynech:
+    # (lxqt-panel & disown) 2>/dev/null
 else
-    echo ">> Starší verze systému ($OS_CODENAME), binární patch pro 25.10 vynechán."
+    echo "!! Soubor s patchem nenalezen."
 fi
 
 # ---------------------------------------------------------
