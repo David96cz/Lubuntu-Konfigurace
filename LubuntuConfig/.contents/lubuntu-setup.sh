@@ -65,20 +65,24 @@ echo ">> Nasazuji čisté konfigurační soubory z .config..."
 pkill lxqt-notificationd 2>/dev/null
 cp "$CONFIG_DIR/notifications.conf" "$LXQT_DIR/notifications.conf"
 
-# 1. Vypneme modul plochy (aby si neuložil staré nastavení při ukončování)
-pcmanfm-qt --desktop-off 2>/dev/null
-pkill -9 pcmanfm-qt 2>/dev/null
+echo ">> Aplikuji nastavení plochy..."
 
-# 2. Vyměníme konfiguraci
+# 1. Zkopírujeme tvoje nové nastavení rovnou za běhu (přepíšeme mu ho pod rukama)
 rm -rf "$PCMANFM_DIR"
 mkdir -p "$PCMANFM_DIR"
 cp "$CONFIG_DIR/pcmanfm-qt.conf" "$PCMANFM_DIR/settings.conf"
 
-# 3. Znovu nahodíme plochu (načte si nové settings.conf)
-# Použijeme 'disown', aby proces běžel nezávisle na tvém skriptu/terminálu
-(pcmanfm-qt --desktop --show-desktop & disown) 2>/dev/null
+# 2. FATALITY: Zastřelíme ho signálem 9 (SIGKILL). Nestihne si uložit tu starou paměť na disk.
+killall -9 pcmanfm-qt 2>/dev/null
 
-echo ">> Plocha byla překonfigurována a restartována."
+# 3. Systém (lxqt-session) si všimne, že pcmanfm-qt umřel a okamžitě ho spustí znovu.
+# My jen počkáme 1 vteřinu, aby to stihl udělat z toho našeho nového souboru.
+sleep 1
+
+# 4. Kdyby se náhodou nenastartoval sám, nakopneme ho ručně na pozadí
+pgrep pcmanfm-qt >/dev/null || (pcmanfm-qt --desktop --show-desktop & disown)
+
+echo ">> Nastavení plochy nahráno a aplikováno."
 
 OS_VER=$(lsb_release -rs)
 if [[ "$OS_VER" == 24.* ]]; then
@@ -397,24 +401,34 @@ fi
 # ---------------------------------------------------------
 # 12. ODSTRANĚNÍ "O LXQT" Z FANCY MENU (Binární patch)
 # ---------------------------------------------------------
-echo ">> Nasazuji upravený lxqt-panel..."
+echo ">> Kontrola verze systému pro aplikaci Fancy Menu patche..."
+OS_CODENAME=$(lsb_release -cs)
 
-# 1. Nejdříve panel nemilosrdně ukončíme, aby se uvolnil soubor v /usr/bin
-# Použijeme -9 (SIGKILL), aby zmizel okamžitě
-sudo killall -9 lxqt-panel 2>/dev/null
+if [[ "$OS_CODENAME" == "questing" || "$OS_CODENAME" == "plucky" ]]; then
+    PATCHED_PANEL="./.config/lxqt-panel_amd64_no_about"
+    if [ -f "$PATCHED_PANEL" ]; then
+        echo ">> Detekováno Lubuntu 25.10+, nasazuji upravený lxqt-panel..."
 
-# 2. Záloha a přepsání
-if [ -f "./.config/lxqt-panel_amd64_no_about" ]; then
-    sudo cp /usr/bin/lxqt-panel /usr/bin/lxqt-panel.bak
-    sudo cp "./.config/lxqt-panel_amd64_no_about" /usr/bin/lxqt-panel
-    sudo chmod +x /usr/bin/lxqt-panel
-    echo ">> Panel byl nahrazen."
-    
-    # Pokud ho nechceš spouštět, aby se ti nesekl terminál, 
-    # prostě tenhle řádek vynech:
-    # (lxqt-panel & disown) 2>/dev/null
+        # 1. ZÁKLADNÍ TRIK: Přesuneme originál pryč. Tím se vyhneme chybě "Soubor je používán"
+        sudo mv /usr/bin/lxqt-panel /usr/bin/lxqt-panel.bak
+
+        # 2. Vložíme tvůj patch (teď už má volnou cestu)
+        sudo cp "$PATCHED_PANEL" /usr/bin/lxqt-panel
+        sudo chmod +x /usr/bin/lxqt-panel
+
+        # 3. Odstřelíme ten starý běžící v paměti
+        killall -9 lxqt-panel 2>/dev/null
+        
+        # 4. Počkáme sekundu a ověříme, jestli ho systém nahodil sám, případně mu pomůžeme
+        sleep 1
+        pgrep lxqt-panel >/dev/null || (lxqt-panel & disown)
+        
+        echo ">> Patch úspěšně aplikován. Pták je v pánu."
+    else
+        echo "!! VAROVÁNÍ: Soubor $PATCHED_PANEL nebyl nalezen! Přeskakuji..."
+    fi
 else
-    echo "!! Soubor s patchem nenalezen."
+    echo ">> Starší verze systému ($OS_CODENAME), binární patch pro 25.10 vynechán."
 fi
 
 # ---------------------------------------------------------
