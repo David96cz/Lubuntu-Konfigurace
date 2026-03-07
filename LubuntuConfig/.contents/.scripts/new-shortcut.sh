@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- KONFIGURACE ---
-BUSY_SCRIPT="$HOME/.local/share/scripts/busy-launch.py"
+BUSY_SCRIPT="$HOME/.local/bin/busy-launch.py"
 APPS_DIR="$HOME/.local/share/applications"
 
 # Barvičky
