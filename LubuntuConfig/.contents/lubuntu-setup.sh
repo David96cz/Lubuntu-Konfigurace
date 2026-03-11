@@ -22,18 +22,24 @@ if [ -f "$CONFIG_TXT" ]; then
     echo ">> Načítám seznamy balíčků a nastavení z $CONFIG_TXT..."
     BALICKY=$(sed -n '/^\[INSTALL\]/,/^\[/p' "$CONFIG_TXT" | grep -v '^\[.*\]' | grep -vE '^\s*#|^\s*$' | xargs)
     SMRTIHLAV=$(sed -n '/^\[REMOVE\]/,/^\[/p' "$CONFIG_TXT" | grep -v '^\[.*\]' | grep -vE '^\s*#|^\s*$' | xargs)
-    
-    # Načtení URL prohlížeče ze sekce [SETTINGS]
     BROWSER_URL=$(sed -n '/^\[SETTINGS\]/,/^\[/p' "$CONFIG_TXT" | grep '^BROWSER_URL=' | cut -d'=' -f2-)
+    
+    # Načtení pole pro aplikace ke skrytí
+    APPS_TO_HIDE_STR=$(sed -n '/^\[HIDE\]/,/^\[/p' "$CONFIG_TXT" | grep -v '^\[.*\]' | grep -vE '^\s*#|^\s*$' | xargs)
+    read -r -a APPS_TO_HIDE <<< "$APPS_TO_HIDE_STR"
 else
     echo "[!] VAROVÁNÍ: Soubor $CONFIG_TXT nebyl nalezen! Použiji záložní (hardcoded) hodnoty."
     BALICKY="xfwm4 xfconf gdebi flameshot htop vlc featherpad icoutils viewnior ffmpegthumbnailer heif-gdk-pixbuf zram-tools gthumb cabextract libgl1-mesa-dri:i386 libgl1:i386 libglx-mesa0:i386 yad cups-client cups brightnessctl libnotify-bin copyq"
     SMRTIHLAV="xscreensaver lximage-qt qlipper imagemagick vim yad"
+    APPS_TO_HIDE=("lxqt-about.desktop" "qterminal-drop.desktop" "lxqt-lockscreen.desktop" "lxqt-leave.desktop")
 fi
 
-# Záchranná brzda: Pokud url v texťáku chybí, hodíme tam Chrome
 if [ -z "$BROWSER_URL" ]; then
     BROWSER_URL="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
+fi
+# Pojistka pro prázdné HIDE (kdyby sekce v texťáku chyběla)
+if [ ${#APPS_TO_HIDE[@]} -eq 0 ]; then
+    APPS_TO_HIDE=("lxqt-about.desktop" "qterminal-drop.desktop" "lxqt-lockscreen.desktop" "lxqt-leave.desktop")
 fi
 
 echo "=== ZAČÍNÁM NASTAVENÍ LUBUNTU (FINAL V8 ULTIMATE) ==="
@@ -152,8 +158,7 @@ echo "   [OK] Skripty rozdistribuovány."
 echo ">> Skrývám aplikace z menu..."
 if [ ! -d "$USER_APPS_DIR" ]; then mkdir -p "$USER_APPS_DIR"; fi
 
-APPS_TO_HIDE=("lxqt-about.desktop" "qterminal-drop.desktop" "lxqt-lockscreen.desktop" "lxqt-leave.desktop")
-
+# Smyčka projede všechny .desktop soubory načtené z texťáku
 for app in "${APPS_TO_HIDE[@]}"; do
     if [ -f "/usr/share/applications/$app" ]; then
         cp "/usr/share/applications/$app" "$USER_APPS_DIR/$app"
@@ -162,10 +167,15 @@ for app in "${APPS_TO_HIDE[@]}"; do
         else
             echo "NoDisplay=true" >> "$USER_APPS_DIR/$app"
         fi
+        echo "   [OK] Skryto: $app"
+    else
+        # Tohle tě ochrání před pádem – pokud se spleteš v názvu, jen to hodí info a jede se dál
+        echo "   [-] Přeskakuji: $app (nenalezeno v /usr/share/applications/)"
     fi
 done
+
 update-desktop-database "$USER_APPS_DIR" 2>/dev/null
-echo "   [OK] Aplikace skryty."
+echo "   [OK] Aplikace úspěšně skryty."
 
 # ---------------------------------------------------------
 # 5. KLÁVESOVÉ ZKRATKY A JAS

@@ -43,3 +43,10 @@ qlipper
 imagemagick
 vim
 yad
+
+[HIDE]
+# --- Zbytečnosti v menu, které nechci vidět ---
+lxqt-about.desktop
+qterminal-drop.desktop
+lxqt-lockscreen.desktop
+lxqt-leave.desktop
