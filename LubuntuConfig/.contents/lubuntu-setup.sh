@@ -3,8 +3,9 @@
 # Zajištění sudo oprávnění hned na začátku
 sudo -v
 
-# --- ABSOLUTNÍ CESTY K TVÝM NOVÝM SLOŽKÁM ---
-BASE_DIR="$(dirname "$(realpath "$0")")"
+# --- ABSOLUTNÍ CESTY K TVÝM SLOŽKÁM ---
+BASE_DIR="$(dirname "$(realpath "$0")")" # Ukazuje do složky .contents
+ROOT_DIR="$(dirname "$BASE_DIR")"        # Ukazuje o úroveň výš (hlavní složka)
 CONFIG_DIR="$BASE_DIR/.config"
 SCRIPTS_DIR="$BASE_DIR/.scripts"
 
@@ -14,9 +15,26 @@ PCMANFM_DIR="$HOME/.config/pcmanfm-qt/lxqt"
 USER_APPS_DIR="$HOME/.local/share/applications"
 LOCAL_BIN="$HOME/.local/bin"
 
-# Definice balíčků
-BALICKY="xfwm4 xfconf gdebi flameshot htop vlc featherpad icoutils viewnior ffmpegthumbnailer heif-gdk-pixbuf zram-tools gthumb cabextract libgl1-mesa-dri:i386 libgl1:i386 libglx-mesa0:i386 yad cups-client cups brightnessctl libnotify-bin copyq"
-SMRTIHLAV="xscreensaver lximage-qt qlipper imagemagick vim"
+# --- NAČTENÍ KONFIGURACE Z TEXTÁKU ---
+CONFIG_TXT="$ROOT_DIR/setup-config.txt"
+
+if [ -f "$CONFIG_TXT" ]; then
+    echo ">> Načítám seznamy balíčků a nastavení z $CONFIG_TXT..."
+    BALICKY=$(sed -n '/^\[INSTALL\]/,/^\[/p' "$CONFIG_TXT" | grep -v '^\[.*\]' | grep -vE '^\s*#|^\s*$' | xargs)
+    SMRTIHLAV=$(sed -n '/^\[REMOVE\]/,/^\[/p' "$CONFIG_TXT" | grep -v '^\[.*\]' | grep -vE '^\s*#|^\s*$' | xargs)
+    
+    # Načtení URL prohlížeče ze sekce [SETTINGS]
+    BROWSER_URL=$(sed -n '/^\[SETTINGS\]/,/^\[/p' "$CONFIG_TXT" | grep '^BROWSER_URL=' | cut -d'=' -f2-)
+else
+    echo "[!] VAROVÁNÍ: Soubor $CONFIG_TXT nebyl nalezen! Použiji záložní (hardcoded) hodnoty."
+    BALICKY="xfwm4 xfconf gdebi flameshot htop vlc featherpad icoutils viewnior ffmpegthumbnailer heif-gdk-pixbuf zram-tools gthumb cabextract libgl1-mesa-dri:i386 libgl1:i386 libglx-mesa0:i386 yad cups-client cups brightnessctl libnotify-bin copyq"
+    SMRTIHLAV="xscreensaver lximage-qt qlipper imagemagick vim yad"
+fi
+
+# Záchranná brzda: Pokud url v texťáku chybí, hodíme tam Chrome
+if [ -z "$BROWSER_URL" ]; then
+    BROWSER_URL="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
+fi
 
 echo "=== ZAČÍNÁM NASTAVENÍ LUBUNTU (FINAL V8 ULTIMATE) ==="
 
@@ -47,14 +65,28 @@ for balicek in $BALICKY; do
     sudo apt install --no-install-recommends "$balicek" -y || echo "[!] CHYBA: Přeskakuji $balicek..."
 done
 
-if ! command -v google-chrome &> /dev/null; then
-    wget -qO /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-    sudo apt install -y /tmp/google-chrome.deb
-    rm /tmp/google-chrome.deb
+echo ">> Instaluji webový prohlížeč..."
+if [ -n "$BROWSER_URL" ]; then
+    wget -qO /tmp/browser.deb "$BROWSER_URL"
+    sudo apt install -y /tmp/browser.deb
+    rm /tmp/browser.deb
+else
+    echo "!! CHYBA: BROWSER_URL je prázdné, instalace prohlížeče přeskočena."
 fi
 
 # ---------------------------------------------------------
-# 2. ZÁLOHA A APLIKACE TVÝCH .CONFIG SOUBORŮ
+# 2. ČIŠTĚNÍ BORDELU
+# ---------------------------------------------------------
+echo ">> Čistím systém od zbytečných aplikací..."
+for balicek in $SMRTIHLAV; do
+    sudo apt purge "$balicek" -y || true
+done
+sudo apt autoremove --purge -y
+sudo apt clean
+echo "   [OK] Systém je vyčištěn od všeho balastu."
+
+# ---------------------------------------------------------
+# 3. ZÁLOHA A APLIKACE TVÝCH .CONFIG SOUBORŮ
 # ---------------------------------------------------------
 echo ">> Zálohuji stávající konfiguraci..."
 mkdir -p "$LXQT_DIR/backup_$(date +%F_%T)"
@@ -97,7 +129,7 @@ cp "$CONFIG_DIR/session.conf" "$LXQT_DIR/session.conf" 2>/dev/null
 echo "   [OK] Konfigurační soubory úspěšně přepsány."
 
 # ---------------------------------------------------------
-# 3. KOPÍROVÁNÍ VLASTNÍCH SKRIPTŮ Z .SCRIPTS
+# 4. KOPÍROVÁNÍ VLASTNÍCH SKRIPTŮ Z .SCRIPTS
 # ---------------------------------------------------------
 echo ">> Nasazuji utilitky ze složky .scripts do systému..."
 
@@ -115,7 +147,7 @@ sudo chmod +x /etc/cron.daily/lubuntu-autoupdate
 echo "   [OK] Skripty rozdistribuovány."
 
 # ---------------------------------------------------------
-# 4. SKRYTÍ APLIKACÍ Z MENU
+# 5. SKRYTÍ APLIKACÍ Z MENU
 # ---------------------------------------------------------
 echo ">> Skrývám aplikace z menu..."
 if [ ! -d "$USER_APPS_DIR" ]; then mkdir -p "$USER_APPS_DIR"; fi
@@ -299,7 +331,7 @@ else
 fi
 
 # ---------------------------------------------------------
-# 9. TISK V MENU, CHROME A AUTOSTART APLIKACÍ
+# 9. TISK V MENU, CHROME HLÁŠKA O VÝCHOZÍM PROHLÍŽEČI A AUTOSTART APLIKACÍ
 # ---------------------------------------------------------
 echo ">> Aplikuji systémová zástupce a autostart..."
 
@@ -359,21 +391,10 @@ EOF
 update-desktop-database "$USER_APPS_DIR" 2>/dev/null
 
 # ---------------------------------------------------------
-# 10. ČIŠTĚNÍ BORDELU
-# ---------------------------------------------------------
-echo ">> Čistím systém od zbytečných aplikací..."
-for balicek in $SMRTIHLAV; do
-    sudo apt purge "$balicek" -y || true
-done
-sudo apt autoremove --purge -y
-sudo apt clean
-echo "   [OK] Systém je vyčištěn od všeho balastu."
-
-# ---------------------------------------------------------
-# 11. AUTOLOGIN
+# 10. AUTOLOGIN
 # ---------------------------------------------------------
 
-read -p "Chceš zajistit automatické přihlašování bez hesla? (A/n): " AUTOLOGIN_CHOICE
+read -p "Chceš zajistit automatické přihlašování bez zobrazení login obrazovky a hesla? (A/n): " AUTOLOGIN_CHOICE
 
 # Pokud uživatel zmáčkne Enter (prázdná volba), 'A' nebo 'a', provede se nastavení
 if [[ -z "$AUTOLOGIN_CHOICE" || "$AUTOLOGIN_CHOICE" =~ ^[Aa]$ ]]; then
@@ -399,7 +420,7 @@ else
 fi
 
 # ---------------------------------------------------------
-# 12. ODSTRANĚNÍ "O LXQT" Z FANCY MENU (Binární patch)
+# 11. ODSTRANĚNÍ "O LXQT" Z FANCY MENU (Binární patch)
 # ---------------------------------------------------------
 echo ">> Kontrola verze systému pro aplikaci Fancy Menu patche..."
 OS_CODENAME=$(lsb_release -cs)
