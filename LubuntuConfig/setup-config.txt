@@ -50,3 +50,8 @@ lxqt-about.desktop
 qterminal-drop.desktop
 lxqt-lockscreen.desktop
 lxqt-leave.desktop
+lxqt-reboot.desktop
+lxqt-shutdown.desktop
+lxqt-hibernate.desktop
+lxqt-suspend.desktop
+lxqt-logout.desktop
