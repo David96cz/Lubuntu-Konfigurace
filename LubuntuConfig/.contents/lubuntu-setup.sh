@@ -307,6 +307,7 @@ Section "InputClass"
     Driver "libinput"
     Option "ClickMethod" "clickfinger"
     Option "Tapping" "on"
+    Option "NaturalScrolling" "true"
 EndSection
 EOF
 
