@@ -55,3 +55,7 @@ lxqt-shutdown.desktop
 lxqt-hibernate.desktop
 lxqt-suspend.desktop
 lxqt-logout.desktop
+
+[SDDM]
+autologin=false
+relogin=false

@@ -42,6 +42,19 @@ if [ ${#APPS_TO_HIDE[@]} -eq 0 ]; then
     APPS_TO_HIDE=("lxqt-about.desktop" "qterminal-drop.desktop" "lxqt-lockscreen.desktop" "lxqt-leave.desktop")
 fi
 
+# Načtení nastavení SDDM
+    SDDM_AUTOLOGIN=$(sed -n '/^\[SDDM\]/,/^\[/p' "$CONFIG_TXT" | grep -i '^autologin=' | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    SDDM_RELOGIN=$(sed -n '/^\[SDDM\]/,/^\[/p' "$CONFIG_TXT" | grep -i '^relogin=' | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    
+# Pojistka pro prázdné SDDM hodnoty (kdyby sekce v texťáku chyběla nebo byla prázdná)
+if [ -z "$SDDM_AUTOLOGIN" ]; then
+    SDDM_AUTOLOGIN="false"
+fi
+
+if [ -z "$SDDM_RELOGIN" ]; then
+    SDDM_RELOGIN="false"
+fi
+
 echo "=== ZAČÍNÁM NASTAVENÍ LUBUNTU (FINAL V8 ULTIMATE) ==="
 
 # ---------------------------------------------------------
@@ -402,34 +415,43 @@ EOF
 update-desktop-database "$USER_APPS_DIR" 2>/dev/null
 
 # ---------------------------------------------------------
-# 10. AUTOLOGIN
+# 10. AUTOLOGIN (SDDM)
 # ---------------------------------------------------------
+echo ">> Zpracovávám nastavení SDDM z konfigurace..."
 
-read -p "Chceš zajistit automatické přihlašování bez zobrazení login obrazovky a hesla? (A/n): " AUTOLOGIN_CHOICE
+# 1. Normalizace hodnot (cokoliv kromě 'true' a '1' se bere jako false)
+if [[ "$SDDM_AUTOLOGIN" == "true" || "$SDDM_AUTOLOGIN" == "1" ]]; then
+    IS_AUTOLOGIN=true
+else
+    IS_AUTOLOGIN=false
+fi
 
-sudo rm -f /etc/sddm.conf
+if [[ "$SDDM_RELOGIN" == "true" || "$SDDM_RELOGIN" == "1" ]]; then
+    IS_RELOGIN=true
+else
+    IS_RELOGIN=false
+fi
 
-# Pokud uživatel zmáčkne Enter (prázdná volba), 'A' nebo 'a', provede se nastavení
-if [[ -z "$AUTOLOGIN_CHOICE" || "$AUTOLOGIN_CHOICE" =~ ^[Aa]$ ]]; then
-    echo ">> Nastavuji autologin pro uživatele $USER..."
+# 2. Vždy nejdřív pro jistotu smažeme starý konfigurák (čistý štít)
+sudo rm -f /etc/sddm.conf.d/autologin.conf
 
-    # Smazání případného duplicitního hlavního souboru (-f zajistí, že to nevyhodí chybu, pokud soubor neexistuje)
-    sudo rm -f /etc/sddm.conf
-
-    # Vytvoření složky, pokud by náhodou chyběla
+# 3. Aplikace logiky
+if [ "$IS_AUTOLOGIN" = true ]; then
+    echo ">> Nastavuji autologin pro uživatele $USER (Relogin: $IS_RELOGIN)..."
+    
+    # Vytvoření složky, pokud chybí
     sudo mkdir -p /etc/sddm.conf.d
-
-    # Zápis do správného konfiguračního souboru
+    
+    # Zápis do konfiguračního souboru
     sudo tee /etc/sddm.conf.d/autologin.conf > /dev/null <<EOF
 [Autologin]
 User=$USER
 Session=Lubuntu
-Relogin=true
+Relogin=$IS_RELOGIN
 EOF
-
-    echo ">> Autologin úspěšně nastaven."
+    echo "   [OK] Autologin úspěšně nastaven."
 else
-    echo ">> Přeskakuji, musíš se vždycky přihlásit heslem při startu PC nebo při odhlášení..."
+    echo ">> Autologin vypnutý (nebo neplatná hodnota v configu). Bude vyžadováno heslo."
 fi
 
 # ---------------------------------------------------------
