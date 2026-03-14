@@ -407,6 +407,8 @@ update-desktop-database "$USER_APPS_DIR" 2>/dev/null
 
 read -p "Chceš zajistit automatické přihlašování bez zobrazení login obrazovky a hesla? (A/n): " AUTOLOGIN_CHOICE
 
+sudo rm -f /etc/sddm.conf
+
 # Pokud uživatel zmáčkne Enter (prázdná volba), 'A' nebo 'a', provede se nastavení
 if [[ -z "$AUTOLOGIN_CHOICE" || "$AUTOLOGIN_CHOICE" =~ ^[Aa]$ ]]; then
     echo ">> Nastavuji autologin pro uživatele $USER..."
