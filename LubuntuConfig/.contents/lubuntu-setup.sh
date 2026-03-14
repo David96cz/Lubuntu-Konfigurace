@@ -22,11 +22,18 @@ if [ -f "$CONFIG_TXT" ]; then
     echo ">> Načítám seznamy balíčků a nastavení z $CONFIG_TXT..."
     BALICKY=$(sed -n '/^\[INSTALL\]/,/^\[/p' "$CONFIG_TXT" | grep -v '^\[.*\]' | grep -vE '^\s*#|^\s*$' | xargs)
     SMRTIHLAV=$(sed -n '/^\[REMOVE\]/,/^\[/p' "$CONFIG_TXT" | grep -v '^\[.*\]' | grep -vE '^\s*#|^\s*$' | xargs)
-    BROWSER_URL=$(sed -n '/^\[SETTINGS\]/,/^\[/p' "$CONFIG_TXT" | grep '^BROWSER_URL=' | cut -d'=' -f2-)
     
-    # Načtení pole pro aplikace ke skrytí
+    # Prohlížeč
+    BROWSER_URL=$(sed -n '/^\[SETTINGS\]/,/^\[/p' "$CONFIG_TXT" | grep '^BROWSER_URL=' | cut -d'=' -f2-)
+    BROWSER_DESKTOP=$(sed -n '/^\[SETTINGS\]/,/^\[/p' "$CONFIG_TXT" | grep '^BROWSER_DESKTOP=' | cut -d'=' -f2-)
+    
+    # Aplikace ke skrytí
     APPS_TO_HIDE_STR=$(sed -n '/^\[HIDE\]/,/^\[/p' "$CONFIG_TXT" | grep -v '^\[.*\]' | grep -vE '^\s*#|^\s*$' | xargs)
     read -r -a APPS_TO_HIDE <<< "$APPS_TO_HIDE_STR"
+    
+    # Autologin
+    SDDM_AUTOLOGIN=$(sed -n '/^\[SDDM\]/,/^\[/p' "$CONFIG_TXT" | grep -i '^autologin=' | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    SDDM_RELOGIN=$(sed -n '/^\[SDDM\]/,/^\[/p' "$CONFIG_TXT" | grep -i '^relogin=' | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
 else
     echo "[!] VAROVÁNÍ: Soubor $CONFIG_TXT nebyl nalezen! Použiji záložní (hardcoded) hodnoty."
     BALICKY="xfwm4 xfconf gdebi flameshot htop vlc featherpad icoutils viewnior ffmpegthumbnailer heif-gdk-pixbuf zram-tools gthumb cabextract libgl1-mesa-dri:i386 libgl1:i386 libglx-mesa0:i386 yad cups-client cups brightnessctl libnotify-bin copyq"
@@ -34,19 +41,19 @@ else
     APPS_TO_HIDE=("lxqt-about.desktop" "qterminal-drop.desktop" "lxqt-lockscreen.desktop" "lxqt-leave.desktop")
 fi
 
+# --- POJISTKY PRO CHYBĚJÍCÍ HODNOTY V TEXŤÁKU ---
 if [ -z "$BROWSER_URL" ]; then
     BROWSER_URL="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
 fi
-# Pojistka pro prázdné HIDE (kdyby sekce v texťáku chyběla)
+
+if [ -z "$BROWSER_DESKTOP" ]; then
+    BROWSER_DESKTOP="google-chrome.desktop"
+fi
+
 if [ ${#APPS_TO_HIDE[@]} -eq 0 ]; then
     APPS_TO_HIDE=("lxqt-about.desktop" "qterminal-drop.desktop" "lxqt-lockscreen.desktop" "lxqt-leave.desktop")
 fi
 
-# Načtení nastavení SDDM
-    SDDM_AUTOLOGIN=$(sed -n '/^\[SDDM\]/,/^\[/p' "$CONFIG_TXT" | grep -i '^autologin=' | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-    SDDM_RELOGIN=$(sed -n '/^\[SDDM\]/,/^\[/p' "$CONFIG_TXT" | grep -i '^relogin=' | cut -d'=' -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-    
-# Pojistka pro prázdné SDDM hodnoty (kdyby sekce v texťáku chyběla nebo byla prázdná)
 if [ -z "$SDDM_AUTOLOGIN" ]; then
     SDDM_AUTOLOGIN="false"
 fi
@@ -118,19 +125,12 @@ cp "$CONFIG_DIR/notifications.conf" "$LXQT_DIR/notifications.conf"
 
 echo ">> Aplikuji nastavení plochy..."
 
-# 1. Zkopírujeme tvoje nové nastavení rovnou za běhu (přepíšeme mu ho pod rukama)
 rm -rf "$PCMANFM_DIR"
 mkdir -p "$PCMANFM_DIR"
 cp "$CONFIG_DIR/pcmanfm-qt.conf" "$PCMANFM_DIR/settings.conf"
 
-# 2. FATALITY: Zastřelíme ho signálem 9 (SIGKILL). Nestihne si uložit tu starou paměť na disk.
 killall -9 pcmanfm-qt 2>/dev/null
-
-# 3. Systém (lxqt-session) si všimne, že pcmanfm-qt umřel a okamžitě ho spustí znovu.
-# My jen počkáme 1 vteřinu, aby to stihl udělat z toho našeho nového souboru.
 sleep 1
-
-# 4. Kdyby se náhodou nenastartoval sám, nakopneme ho ručně na pozadí
 pgrep pcmanfm-qt >/dev/null || (pcmanfm-qt --desktop --show-desktop & disown)
 
 echo ">> Nastavení plochy nahráno a aplikováno."
@@ -142,7 +142,6 @@ else
     cp "$CONFIG_DIR/panel-26.conf" "$LXQT_DIR/panel.conf"
 fi
 
-# Zkopírování tvého vlastního session.conf
 cp "$CONFIG_DIR/session.conf" "$LXQT_DIR/session.conf" 2>/dev/null
 
 echo "   [OK] Konfigurační soubory úspěšně přepsány."
@@ -171,7 +170,6 @@ echo "   [OK] Skripty rozdistribuovány."
 echo ">> Skrývám aplikace z menu..."
 if [ ! -d "$USER_APPS_DIR" ]; then mkdir -p "$USER_APPS_DIR"; fi
 
-# Smyčka projede všechny .desktop soubory načtené z texťáku
 for app in "${APPS_TO_HIDE[@]}"; do
     if [ -f "/usr/share/applications/$app" ]; then
         cp "/usr/share/applications/$app" "$USER_APPS_DIR/$app"
@@ -182,7 +180,6 @@ for app in "${APPS_TO_HIDE[@]}"; do
         fi
         echo "   [OK] Skryto: $app"
     else
-        # Tohle tě ochrání před pádem – pokud se spleteš v názvu, jen to hodí info a jede se dál
         echo "   [-] Přeskakuji: $app (nenalezeno v /usr/share/applications/)"
     fi
 done
@@ -191,7 +188,7 @@ update-desktop-database "$USER_APPS_DIR" 2>/dev/null
 echo "   [OK] Aplikace úspěšně skryty."
 
 # ---------------------------------------------------------
-# 5. KLÁVESOVÉ ZKRATKY A JAS
+# 6. KLÁVESOVÉ ZKRATKY A JAS
 # ---------------------------------------------------------
 echo ">> Přidávám klávesové zkratky..."
 SHORTCUTS_CONF="$LXQT_DIR/globalkeyshortcuts.conf"
@@ -238,7 +235,7 @@ sudo usermod -aG video $USER
 echo "   [OK] Zkratky a jas nastaveny."
 
 # ---------------------------------------------------------
-# 6. QTERMINAL, NUMLOCK A AUTOMOUNT DISKŮ
+# 7. QTERMINAL, NUMLOCK A AUTOMOUNT DISKŮ
 # ---------------------------------------------------------
 echo ">> Vypínám otravnou informaci o velikosti okna v QTerminalu..."
 QTERM_DIR="$HOME/.config/qterminal.org"
@@ -287,7 +284,7 @@ gsettings set org.gtk.Settings.FileChooser show-hidden false 2>/dev/null
 echo "   [OK] Různá nastavení prostředí dokončena."
 
 # ---------------------------------------------------------
-# 7. XFWM4 
+# 8. XFWM4 
 # ---------------------------------------------------------
 echo ">> Nastavuji XFWM4..."
 SESSION_CONF="$LXQT_DIR/session.conf"
@@ -307,12 +304,10 @@ if command -v xfconf-query &> /dev/null; then
 fi
 
 # ---------------------------------------------------------
-# 8. PRAVIDLA PRO TOUCHPAD
+# 9. PRAVIDLA PRO TOUCHPAD
 # ---------------------------------------------------------
-
 echo ">> 1. Nastavuji globální pravidla touchpadu (X11)..."
 sudo mkdir -p /etc/X11/xorg.conf.d
-# Vynucení clickfinger (zákaz rohů) pro všechny touchpady
 sudo tee /etc/X11/xorg.conf.d/40-libinput-touchpad.conf > /dev/null << 'EOF'
 Section "InputClass"
     Identifier "libinput touchpad catchall"
@@ -321,41 +316,36 @@ Section "InputClass"
     Option "ClickMethod" "clickfinger"
     Option "Tapping" "on"
     Option "NaturalScrolling" "true"
+    Option "AccelProfile" "adaptive"
+    Option "AccelSpeed" "0.0"
 EndSection
 EOF
 
 echo ">> 2. Detekuji touchpad a zapisuji výchozí hodnoty pro LXQt GUI..."
-# Získání názvu touchpadu
 TOUCHPAD_NAME=$(xinput list --name-only | grep -i "touchpad" | head -n 1)
 
 if [ -n "$TOUCHPAD_NAME" ]; then
     echo "Nalezen touchpad pro GUI: $TOUCHPAD_NAME"
-    
-    # LXQt (QSettings) kóduje mezery jako %2520 a lomítka jako %252F
     FORMATTED_NAME=$(echo "$TOUCHPAD_NAME" | sed 's/\//%252F/g; s/ /%2520/g')
     
     LXQT_CONF="$HOME/.config/lxqt/session.conf"
     mkdir -p "$(dirname "$LXQT_CONF")"
     touch "$LXQT_CONF"
 
-    # Pokud sekce [Touchpad] neexistuje, přidáme ji
     if ! grep -q "^\[Touchpad\]" "$LXQT_CONF"; then
         echo "" >> "$LXQT_CONF"
         echo "[Touchpad]" >> "$LXQT_CONF"
     fi
 
-    # Zápis předvyplněných hodnot do session.conf (dvojité zpětné lomítko je kvůli bash echo escape)
-    # Tyto hodnoty si načte GUI a uživatel je může dál měnit
     echo "${FORMATTED_NAME}\\naturalScrollingEnabled=1" >> "$LXQT_CONF"
     echo "${FORMATTED_NAME}\\tappingEnabled=1" >> "$LXQT_CONF"
-    
     echo "Výchozí GUI hodnoty byly zapsány do $LXQT_CONF"
 else
     echo "Varování: Žádný touchpad nebyl detekován, přeskočeno nastavení GUI."
 fi
 
 # ---------------------------------------------------------
-# 9. TISK V MENU, CHROME HLÁŠKA O VÝCHOZÍM PROHLÍŽEČI A AUTOSTART APLIKACÍ
+# 10. TISK V MENU, VÝCHOZÍ PROHLÍŽEČ A AUTOSTART APLIKACÍ
 # ---------------------------------------------------------
 echo ">> Aplikuji systémová zástupce a autostart..."
 
@@ -372,9 +362,22 @@ MimeTypes=image/*;application/pdf;text/plain;
 Exec=/usr/local/bin/tisk-cz %f
 EOF
 
-xdg-settings set default-web-browser google-chrome.desktop 2>/dev/null
-sudo mkdir -p /etc/opt/chrome/policies/managed/
-echo '{"DefaultBrowserSettingEnabled": false}' | sudo tee /etc/opt/chrome/policies/managed/stop-otravovat.json > /dev/null
+echo ">> Nastavuji výchozí prohlížeč ($BROWSER_DESKTOP)..."
+xdg-settings set default-web-browser "$BROWSER_DESKTOP" 2>/dev/null
+
+echo ">> Zabíjím otravné popupy o výchozím prohlížeči (plošná Chromium prevence)..."
+CHROMIUM_POLICIES=(
+    "/etc/opt/chrome/policies/managed"
+    "/etc/opt/edge/policies/managed"
+    "/etc/brave/policies/managed"
+    "/etc/chromium/policies/managed"
+    "/etc/opt/vivaldi/policies/managed"
+)
+
+for policy_dir in "${CHROMIUM_POLICIES[@]}"; do
+    sudo mkdir -p "$policy_dir"
+    echo '{"DefaultBrowserSettingEnabled": false}' | sudo tee "$policy_dir/stop-otravovat.json" > /dev/null
+done
 
 AUTOSTART_DIR="$HOME/.config/autostart"
 mkdir -p "$AUTOSTART_DIR"
@@ -398,9 +401,8 @@ EOF
 
 bash "$LOCAL_BIN/update-wrappers.sh"
 
-# --- ZÁSTUPCE DO MENU: TVŮRCE ZÁSTUPCŮ ---
-    echo ">> Vytvářím zástupce 'Tvůrce zástupců' v menu..."
-    cat > "$USER_APPS_DIR/tvurce-zastupcu.desktop" << EOF
+echo ">> Vytvářím zástupce 'Tvůrce zástupců' v menu..."
+cat > "$USER_APPS_DIR/tvurce-zastupcu.desktop" << EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
@@ -415,11 +417,10 @@ EOF
 update-desktop-database "$USER_APPS_DIR" 2>/dev/null
 
 # ---------------------------------------------------------
-# 10. AUTOLOGIN (SDDM)
+# 11. AUTOLOGIN (SDDM)
 # ---------------------------------------------------------
 echo ">> Zpracovávám nastavení SDDM z konfigurace..."
 
-# 1. Normalizace hodnot (cokoliv kromě 'true' a '1' se bere jako false)
 if [[ "$SDDM_AUTOLOGIN" == "true" || "$SDDM_AUTOLOGIN" == "1" ]]; then
     IS_AUTOLOGIN=true
 else
@@ -432,17 +433,11 @@ else
     IS_RELOGIN=false
 fi
 
-# 2. Vždy nejdřív pro jistotu smažeme starý konfigurák (čistý štít)
 sudo rm -f /etc/sddm.conf.d/autologin.conf
 
-# 3. Aplikace logiky
 if [ "$IS_AUTOLOGIN" = true ]; then
     echo ">> Nastavuji autologin pro uživatele $USER (Relogin: $IS_RELOGIN)..."
-    
-    # Vytvoření složky, pokud chybí
     sudo mkdir -p /etc/sddm.conf.d
-    
-    # Zápis do konfiguračního souboru
     sudo tee /etc/sddm.conf.d/autologin.conf > /dev/null <<EOF
 [Autologin]
 User=$USER
@@ -455,27 +450,21 @@ else
 fi
 
 # ---------------------------------------------------------
-# 11. ODSTRANĚNÍ "O LXQT" Z FANCY MENU (Binární patch)
+# 12. ODSTRANĚNÍ "O LXQT" Z FANCY MENU (Binární patch)
 # ---------------------------------------------------------
 echo ">> Kontrola verze systému pro aplikaci Fancy Menu patche..."
 OS_CODENAME=$(lsb_release -cs)
 
 if [[ "$OS_CODENAME" == "questing" || "$OS_CODENAME" == "plucky" ]]; then
-    PATCHED_PANEL="./.config/lxqt-panel_amd64_no_about"
+    PATCHED_PANEL="$CONFIG_DIR/lxqt-panel_amd64_no_about"
     if [ -f "$PATCHED_PANEL" ]; then
         echo ">> Detekováno Lubuntu 25.10+, nasazuji upravený lxqt-panel..."
 
-        # 1. ZÁKLADNÍ TRIK: Přesuneme originál pryč. Tím se vyhneme chybě "Soubor je používán"
         sudo mv /usr/bin/lxqt-panel /usr/bin/lxqt-panel.bak
-
-        # 2. Vložíme tvůj patch (teď už má volnou cestu)
         sudo cp "$PATCHED_PANEL" /usr/bin/lxqt-panel
         sudo chmod +x /usr/bin/lxqt-panel
 
-        # 3. Odstřelíme ten starý běžící v paměti
         killall -9 lxqt-panel 2>/dev/null
-        
-        # 4. Počkáme sekundu a ověříme, jestli ho systém nahodil sám, případně mu pomůžeme
         sleep 1
         pgrep lxqt-panel >/dev/null || (lxqt-panel & disown)
         
