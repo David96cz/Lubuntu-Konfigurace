@@ -42,7 +42,6 @@ lximage-qt
 qlipper
 imagemagick
 vim
-yad
 
 [HIDE]
 # --- Zbytečnosti v menu, které nechci vidět ---
